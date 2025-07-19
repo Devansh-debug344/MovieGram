@@ -1,6 +1,6 @@
 from rest_framework import generics, permissions , filters , viewsets
-from .models import Note , User , Movie , Profile , Comment , SaveMovie
-from .serializers import NoteSerializer , MovieSerializer , UserProfileSerializer , CommentSerializer , SaveMovieSerializer
+from .models import Note , User , Movie , Profile , Comment , SaveMovie , Category
+from .serializers import NoteSerializer , MovieSerializer , UserProfileSerializer , CommentSerializer , SaveMovieSerializer , CategorySerializer
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
 from rest_framework import status , decorators
@@ -82,7 +82,7 @@ class MovieCreateList(generics.ListCreateAPIView):
     filterset_fields = ['is_favorite'] 
 
     def get_queryset(self):
-        return Movie.objects.all()
+        return Movie.objects.all().order_by('id')
     
     def perform_create(self, serializer):
         serializer.save(owner = self.request.user)
@@ -94,6 +94,21 @@ class MovieRetreiveUpdateDelete(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Movie.objects.all()
+
+class CategoryCreateList(generics.ListCreateAPIView):
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return Category.objects.all()
+
+    def perform_create(self, serializer):
+        return serializer.save()
+ 
+class CategoryRetreiveUpdateDelete(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return Category.objects.all()
 
 class ProfileViewSet(viewsets.ModelViewSet):
     serializer_class = UserProfileSerializer
@@ -162,3 +177,36 @@ class SavedMovieRetreiveUpdateDelete(generics.RetrieveUpdateDestroyAPIView):
 
    def get_queryset(self):
        return SaveMovie.objects.all()
+   
+
+class MovieRecommendationView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self,request,movie_id):
+      try:
+        movie = Movie.objects.get(id=movie_id)
+      except Movie.DoesNotExist:
+        return Response({'error' : "Movie not found"} , status=status.HTTP_404_NOT_FOUND)
+      recommendation = Movie.objects.filter(category = movie.category).exclude(id=movie.id)[:5]
+      serializer = MovieSerializer(recommendation , many=True)
+      return Response(serializer.data)
+    
+class TopRatedRecommendation(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self , request):
+        top_rated = Movie.objects.order_by('-rating')[:5]
+        serializer = MovieSerializer(top_rated , many = True)
+        return Response(serializer.data)
+    
+class SaveMovieRecommendation(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        saved_movies = SaveMovie.objects.all()
+        categories = saved_movies.values_list('movie__category', flat=True).distinct()
+
+        recommended_movies = Movie.objects.filter(category__in=categories).exclude(id__in=saved_movies.values_list('movie_id', flat=True)).distinct()
+
+        serializer = MovieSerializer(recommended_movies, many=True)
+        return Response(serializer.data)
